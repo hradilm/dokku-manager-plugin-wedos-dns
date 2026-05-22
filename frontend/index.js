@@ -7,9 +7,8 @@ export default {
   settingsSections: [
     {
       id: 'wedos-dns-config',
-      tab: 'dns',
-      tabLabel: 'DNS',
-      tabOrder: 40,
+      slot: 'dns',
+      providerId: 'wedos-dns',
       label: 'WEDOS DNS',
       component: WedosDnsTab,
       order: 10,
