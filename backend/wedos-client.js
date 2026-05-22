@@ -101,43 +101,20 @@ async function deleteRecordById(email, wapiPassword, domain, rowId) {
   });
 }
 
-// Create three DNS records for a publicly-facing app:
-//
-//   <alias>                  CNAME  <cnameTarget>              — actual domain resolution
-//   _acme-challenge.<alias>  CNAME  _acme-challenge-<alias>.<domain>.  — ACME chain anchor
-//   _acme-challenge-<alias>  TXT    placeholder                — ACME chain terminator
-//
+// Create an explicit CNAME record for a publicly-facing app.
 // WEDOS authoritative nameservers do not expand wildcard CNAMEs for individual
-// subdomain queries, so an explicit per-app record is required. The two ACME
-// records ensure lego's DNS-01 challenge stays inside the managed zone.
+// subdomain queries, so an explicit per-app record is required.
 async function createAppRecords(email, wapiPassword, domain, alias, cnameTarget) {
   // Normalise: CNAME rdata must end with a dot for absolute hostnames.
   const target = cnameTarget.endsWith('.') ? cnameTarget : `${cnameTarget}.`;
   await addRecord(email, wapiPassword, domain, alias, 'CNAME', target, 1800);
-  await addRecord(
-    email, wapiPassword, domain,
-    `_acme-challenge.${alias}`,
-    'CNAME',
-    `_acme-challenge-${alias}.${domain}.`
-  );
-  await addRecord(
-    email, wapiPassword, domain,
-    `_acme-challenge-${alias}`,
-    'TXT',
-    'placeholder'
-  );
   await commitZone(email, wapiPassword, domain);
 }
 
-// Delete all three records created by createAppRecords for <alias>.
+// Delete the CNAME record created by createAppRecords for <alias>.
 async function deleteAppRecords(email, wapiPassword, domain, alias) {
   const records = await listRecords(email, wapiPassword, domain);
-  const targets = new Set([
-    alias,
-    `_acme-challenge.${alias}`,
-    `_acme-challenge-${alias}`,
-  ]);
-  const toDelete = records.filter(r => targets.has(r.name));
+  const toDelete = records.filter(r => r.name === alias);
   if (toDelete.length === 0) return;
   for (const r of toDelete) {
     await deleteRecordById(email, wapiPassword, domain, r.ID);

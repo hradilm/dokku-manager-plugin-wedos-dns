@@ -2,8 +2,8 @@
 //
 // Fills the DNS provider slot in dokku-manager. When a domain like
 // myapp.micbox.cz is added to an app, createCNameRecord:
-//   1. Creates two WEDOS ACME challenge override records so lego's DNS-01
-//      challenge stays inside the micbox.cz zone (not hijacked by the wildcard).
+//   1. Creates an explicit per-app CNAME record in WEDOS (wildcard CNAMEs are
+//      not expanded by WEDOS authoritative nameservers for subdomain queries).
 //   2. Configures letsencrypt for the app (dns-provider + credentials + resolver).
 //   3. Fires letsencrypt:enable in the background — cert issued without blocking.
 //
@@ -11,6 +11,7 @@
 //   DNS_DOMAIN              — public domain, e.g. "micbox.cz"
 //   DNS_WEDOS_EMAIL         — WEDOS account email
 //   DNS_WEDOS_WAPI_PASSWORD — WEDOS WAPI password (from Keeper)
+//   DNS_CNAME_TARGET        — DDNS hostname all app CNAMEs point to
 
 const wedos = require('./wedos-client');
 const { createRouter } = require('./routes');
@@ -92,7 +93,7 @@ function register(ctx) {
     },
 
     // createCNameRecord — called when a *.domain domain is added to an app.
-    // Step 1 (sync): create the explicit app CNAME + ACME challenge records.
+    // Step 1 (sync): create the explicit per-app CNAME record in WEDOS.
     // Steps 2-3 (async, fire-and-forget): configure letsencrypt for the app
     // and issue the cert. Runs in the background so the domain-addition API
     // response returns immediately; errors are logged but don't fail the call.
