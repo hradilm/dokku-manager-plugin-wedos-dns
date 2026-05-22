@@ -101,18 +101,19 @@ async function deleteRecordById(email, wapiPassword, domain, rowId) {
   });
 }
 
-// Create the two ACME challenge override records for <alias>.
+// Create three DNS records for a publicly-facing app:
 //
-// The greedy wildcard *.micbox.cz causes lego to follow the CNAME chain into
-// hradilrt.myDS.me / myDS.me, which WEDOS doesn't control — the DNS-01
-// challenge fails. Fix: add records that keep the challenge inside micbox.cz:
+//   <alias>                  CNAME  <cnameTarget>              — actual domain resolution
+//   _acme-challenge.<alias>  CNAME  _acme-challenge-<alias>.<domain>.  — ACME chain anchor
+//   _acme-challenge-<alias>  TXT    placeholder                — ACME chain terminator
 //
-//   _acme-challenge.<alias>          CNAME  _acme-challenge-<alias>.<domain>.
-//   _acme-challenge-<alias>          TXT    placeholder
-//
-// The CNAME overrides the wildcard. The TXT overrides the one-level wildcard
-// so lego's CNAME chain terminates at a micbox.cz name (which WEDOS owns).
-async function createAcmeRecords(email, wapiPassword, domain, alias) {
+// WEDOS authoritative nameservers do not expand wildcard CNAMEs for individual
+// subdomain queries, so an explicit per-app record is required. The two ACME
+// records ensure lego's DNS-01 challenge stays inside the managed zone.
+async function createAppRecords(email, wapiPassword, domain, alias, cnameTarget) {
+  // Normalise: CNAME rdata must end with a dot for absolute hostnames.
+  const target = cnameTarget.endsWith('.') ? cnameTarget : `${cnameTarget}.`;
+  await addRecord(email, wapiPassword, domain, alias, 'CNAME', target, 1800);
   await addRecord(
     email, wapiPassword, domain,
     `_acme-challenge.${alias}`,
@@ -128,10 +129,11 @@ async function createAcmeRecords(email, wapiPassword, domain, alias) {
   await commitZone(email, wapiPassword, domain);
 }
 
-// Delete the two ACME challenge override records for <alias>.
-async function deleteAcmeRecords(email, wapiPassword, domain, alias) {
+// Delete all three records created by createAppRecords for <alias>.
+async function deleteAppRecords(email, wapiPassword, domain, alias) {
   const records = await listRecords(email, wapiPassword, domain);
   const targets = new Set([
+    alias,
     `_acme-challenge.${alias}`,
     `_acme-challenge-${alias}`,
   ]);
@@ -145,6 +147,6 @@ async function deleteAcmeRecords(email, wapiPassword, domain, alias) {
 
 module.exports = {
   listRecords,
-  createAcmeRecords,
-  deleteAcmeRecords,
+  createAppRecords,
+  deleteAppRecords,
 };

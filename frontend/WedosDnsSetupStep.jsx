@@ -7,19 +7,19 @@
 
 import { useState } from 'react';
 
-async function saveCredentials(domain, email, wapiPassword) {
+async function saveCredentials(domain, email, wapiPassword, cnameTarget) {
   const res = await fetch('/api/server-config/wedos-dns', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ domain, email, wapiPassword }),
+    body: JSON.stringify({ domain, email, wapiPassword, cnameTarget }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Failed to save WEDOS DNS settings');
 }
 
 function WedosDnsSetupStep({ onNext, onBack, addLog }) {
-  const [form, setForm] = useState({ domain: '', email: '', wapiPassword: '' });
+  const [form, setForm] = useState({ domain: '', email: '', wapiPassword: '', cnameTarget: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
@@ -32,7 +32,7 @@ function WedosDnsSetupStep({ onNext, onBack, addLog }) {
     addLog('Saving WEDOS DNS settings…');
 
     try {
-      await saveCredentials(form.domain, form.email, form.wapiPassword);
+      await saveCredentials(form.domain, form.email, form.wapiPassword, form.cnameTarget);
       addLog('WEDOS DNS settings saved', 'success');
       onNext({ dnsProviderInstanceId: 'default' });
     } catch (err) {
@@ -96,6 +96,23 @@ function WedosDnsSetupStep({ onNext, onBack, addLog }) {
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
+            CNAME Target
+          </label>
+          <input
+            type="text"
+            value={form.cnameTarget}
+            onChange={set('cnameTarget')}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
+            placeholder="hradilrt.myds.me"
+            autoComplete="off"
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            DDNS hostname all app CNAMEs will point to (tracks your home IP)
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
             WEDOS WAPI Password
           </label>
           <input
@@ -111,7 +128,7 @@ function WedosDnsSetupStep({ onNext, onBack, addLog }) {
         <div className="flex gap-3 pt-1">
           <button
             type="submit"
-            disabled={saving || !form.domain || !form.email || !form.wapiPassword}
+            disabled={saving || !form.domain || !form.email || !form.wapiPassword || !form.cnameTarget}
             className="flex-1 py-2.5 px-4 bg-indigo-600 text-white font-medium rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving ? 'Saving…' : 'Save & Continue'}

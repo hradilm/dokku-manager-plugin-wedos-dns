@@ -15,7 +15,7 @@
 const wedos = require('./wedos-client');
 const { createRouter } = require('./routes');
 
-const CONFIG_KEYS = ['DNS_DOMAIN', 'DNS_WEDOS_EMAIL', 'DNS_WEDOS_WAPI_PASSWORD'];
+const CONFIG_KEYS = ['DNS_DOMAIN', 'DNS_WEDOS_EMAIL', 'DNS_WEDOS_WAPI_PASSWORD', 'DNS_CNAME_TARGET'];
 const CACHE_TTL = 30_000;
 
 function register(ctx) {
@@ -36,6 +36,7 @@ function register(ctx) {
         domain,
         email: config.DNS_WEDOS_EMAIL || '',
         wapiPassword: config.DNS_WEDOS_WAPI_PASSWORD || '',
+        cnameTarget: config.DNS_CNAME_TARGET || '',
         // dnsSuffix with leading dot is what the core uses for shouldCreateDns /
         // extractAlias comparisons (matches vapor-dns convention).
         dnsSuffix: domain ? `.${domain}` : '',
@@ -61,7 +62,7 @@ function register(ctx) {
     },
 
     isConfigured(cfg) {
-      return !!(cfg.domain && cfg.email && cfg.wapiPassword);
+      return !!(cfg.domain && cfg.email && cfg.wapiPassword && cfg.cnameTarget);
     },
 
     credentialsFromBackup(settings) {
@@ -70,13 +71,14 @@ function register(ctx) {
         domain,
         email: settings.DNS_WEDOS_EMAIL || '',
         wapiPassword: settings.DNS_WEDOS_WAPI_PASSWORD || '',
+        cnameTarget: settings.DNS_CNAME_TARGET || '',
         dnsSuffix: domain ? `.${domain}` : '',
         instanceId: 'default',
       };
     },
 
     hasCredentials(cfg) {
-      return !!(cfg.domain && cfg.email && cfg.wapiPassword);
+      return !!(cfg.domain && cfg.email && cfg.wapiPassword && cfg.cnameTarget);
     },
 
     shouldCreateDns(domain, dnsSuffix) {
@@ -90,14 +92,14 @@ function register(ctx) {
     },
 
     // createCNameRecord — called when a *.domain domain is added to an app.
-    // Step 1 (sync): WEDOS ACME records — must exist before lego runs.
+    // Step 1 (sync): create the explicit app CNAME + ACME challenge records.
     // Steps 2-3 (async, fire-and-forget): configure letsencrypt for the app
     // and issue the cert. Runs in the background so the domain-addition API
     // response returns immediately; errors are logged but don't fail the call.
     async createCNameRecord(cfg, alias) {
       const dokku = ctx.host.dokku;
 
-      await wedos.createAcmeRecords(cfg.email, cfg.wapiPassword, cfg.domain, alias);
+      await wedos.createAppRecords(cfg.email, cfg.wapiPassword, cfg.domain, alias, cfg.cnameTarget);
 
       // Shell-safe single-quote escaping for the WAPI password.
       const escapedPassword = cfg.wapiPassword.replace(/'/g, "'\"'\"'");
@@ -118,7 +120,7 @@ function register(ctx) {
       return {
         success: true,
         alias,
-        fullHostName: `${alias}${cfg.dnsSuffix}`,
+        fullHostName: cfg.cnameTarget,
         instanceId: 'default',
       };
     },
@@ -126,7 +128,7 @@ function register(ctx) {
     async deleteCNameRecord(cfg, alias) {
       const dokku = ctx.host.dokku;
 
-      await wedos.deleteAcmeRecords(cfg.email, cfg.wapiPassword, cfg.domain, alias);
+      await wedos.deleteAppRecords(cfg.email, cfg.wapiPassword, cfg.domain, alias);
 
       (async () => {
         try {
@@ -141,16 +143,14 @@ function register(ctx) {
     },
 
     // getDnsCNameRecords — used by the DNS status check in AppDetail.
-    // We infer "published" apps from the presence of their _acme-challenge
-    // CNAME records in WEDOS (these are created by createCNameRecord above).
+    // Returns the explicit per-app CNAME records (non-underscore, non-wildcard).
     async getDnsCNameRecords(cfg) {
       const records = await wedos.listRecords(cfg.email, cfg.wapiPassword, cfg.domain);
-      // Each _acme-challenge.<alias> CNAME we created means <alias> is published.
       return records
-        .filter(r => r.rdtype === 'CNAME' && r.name.startsWith('_acme-challenge.'))
+        .filter(r => r.rdtype === 'CNAME' && !r.name.startsWith('_') && r.name !== '*')
         .map(r => ({
-          alias: r.name.slice('_acme-challenge.'.length),
-          fullHostName: `${r.name.slice('_acme-challenge.'.length)}${cfg.dnsSuffix}`,
+          alias: r.name,
+          fullHostName: r.rdata.replace(/\.$/, ''),
           instanceId: 'default',
         }));
     },

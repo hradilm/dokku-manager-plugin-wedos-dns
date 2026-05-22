@@ -13,7 +13,7 @@ function WedosDnsTab({ managerAppName }) {
   const [validating, setValidating] = useState(false);
   const [validateResult, setValidateResult] = useState(null);
   const [error, setError] = useState(null);
-  const [form, setForm] = useState({ domain: '', email: '', wapiPassword: '' });
+  const [form, setForm] = useState({ domain: '', email: '', wapiPassword: '', cnameTarget: '' });
 
   const fetchStatus = async () => {
     try {
@@ -30,7 +30,7 @@ function WedosDnsTab({ managerAppName }) {
   useEffect(() => { fetchStatus(); }, []);
 
   const startEdit = () => {
-    setForm({ domain: status?.domain || '', email: status?.email || '', wapiPassword: '' });
+    setForm({ domain: status?.domain || '', email: status?.email || '', wapiPassword: '', cnameTarget: status?.cnameTarget || '' });
     setEditing(true);
     setValidateResult(null);
     setError(null);
@@ -68,6 +68,7 @@ function WedosDnsTab({ managerAppName }) {
       if (form.domain) payload.domain = form.domain;
       if (form.email) payload.email = form.email;
       if (form.wapiPassword) payload.wapiPassword = form.wapiPassword;
+      if (form.cnameTarget) payload.cnameTarget = form.cnameTarget;
 
       const res = await fetch('/api/server-config/wedos-dns', {
         method: 'POST',
@@ -91,7 +92,7 @@ function WedosDnsTab({ managerAppName }) {
     return <div className="card p-4 text-sm text-gray-500">Loading WEDOS DNS settings…</div>;
   }
 
-  const configured = status?.domain && status?.email && status?.wapiPasswordConfigured;
+  const configured = status?.domain && status?.email && status?.wapiPasswordConfigured && status?.cnameTarget;
 
   return (
     <div className="card">
@@ -99,7 +100,7 @@ function WedosDnsTab({ managerAppName }) {
         <div>
           <h2 className="font-semibold">DNS Configuration (WEDOS)</h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            Auto-create ACME challenge DNS records so Let's Encrypt can issue certs for published apps
+            Auto-create per-app CNAME and ACME challenge records in WEDOS when you publish an app
           </p>
         </div>
         {!editing && (
@@ -134,6 +135,19 @@ function WedosDnsTab({ managerAppName }) {
                 className="input text-sm"
                 placeholder="you@example.com"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">CNAME Target</label>
+              <input
+                type="text"
+                value={form.cnameTarget}
+                onChange={(e) => setForm(p => ({ ...p, cnameTarget: e.target.value }))}
+                className="input font-mono text-sm"
+                placeholder="hradilrt.myds.me"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                DDNS hostname all app CNAMEs will point to (tracks your home IP)
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">WEDOS WAPI Password</label>
@@ -203,6 +217,10 @@ function WedosDnsTab({ managerAppName }) {
               <dd className="text-gray-600">{status?.email || <span className="text-gray-400">not set</span>}</dd>
             </div>
             <div className="flex gap-2">
+              <dt className="font-medium text-gray-700 w-36">CNAME Target:</dt>
+              <dd className="font-mono text-gray-600">{status?.cnameTarget || <span className="text-gray-400">not set</span>}</dd>
+            </div>
+            <div className="flex gap-2">
               <dt className="font-medium text-gray-700 w-36">WAPI Password:</dt>
               <dd className="text-gray-600">
                 {status?.wapiPasswordConfigured ? '••••••••••••' : <span className="text-gray-400">not set</span>}
@@ -212,8 +230,9 @@ function WedosDnsTab({ managerAppName }) {
               <p className="text-xs text-gray-500 pt-2">
                 When you add a domain like{' '}
                 <code className="bg-gray-100 px-1 rounded">myapp.{status.domain}</code> to an app,
-                the two ACME challenge DNS records are created automatically in WEDOS so{' '}
-                <code className="bg-gray-100 px-1 rounded">dokku letsencrypt:enable</code> works.
+                an explicit CNAME record pointing to{' '}
+                <code className="bg-gray-100 px-1 rounded">{status.cnameTarget}</code> plus ACME
+                challenge records are created automatically in WEDOS, and Let's Encrypt is enabled.
               </p>
             )}
             {!managerAppName && (

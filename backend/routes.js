@@ -18,6 +18,7 @@ function createRouter(host) {
       res.json({
         domain: config.DNS_DOMAIN || '',
         email: config.DNS_WEDOS_EMAIL || '',
+        cnameTarget: config.DNS_CNAME_TARGET || '',
         wapiPasswordConfigured: !!config.DNS_WEDOS_WAPI_PASSWORD,
       });
     } catch (err) {
@@ -26,12 +27,13 @@ function createRouter(host) {
   });
 
   router.post('/', requireAdmin, async (req, res) => {
-    const { domain, email, wapiPassword } = req.body;
+    const { domain, email, wapiPassword, cnameTarget } = req.body;
     try {
       const updates = {};
       if (domain !== undefined) updates.DNS_DOMAIN = domain;
       if (email !== undefined) updates.DNS_WEDOS_EMAIL = email;
       if (wapiPassword !== undefined) updates.DNS_WEDOS_WAPI_PASSWORD = wapiPassword;
+      if (cnameTarget !== undefined) updates.DNS_CNAME_TARGET = cnameTarget;
 
       if (Object.keys(updates).length > 0) {
         await dokku.setConfig(dokku.appName, updates, true);
@@ -46,7 +48,7 @@ function createRouter(host) {
 
   // POST /validate — test credentials by listing records
   router.post('/validate', requireAdmin, async (req, res) => {
-    const { domain, email, wapiPassword } = req.body;
+    const { domain, email, wapiPassword, cnameTarget } = req.body;
     try {
       let effectivePassword = wapiPassword;
       let effectiveEmail = email;
