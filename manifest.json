@@ -1,0 +1,6 @@
+{
+  "id": "wedos-dns",
+  "label": "WEDOS DNS + Let's Encrypt",
+  "description": "WEDOS WAPI as a DNS provider. Creates ACME challenge override records per app so dokku-letsencrypt can issue certs despite a greedy wildcard CNAME.",
+  "contributes": ["dns"]
+}

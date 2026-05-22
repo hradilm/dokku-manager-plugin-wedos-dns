@@ -1,0 +1,150 @@
+// WEDOS WAPI client.
+//
+// Talks to https://api.wedos.com/wapi/json using form-encoded POST.
+// Auth token: sha1( sha1(password).hex + UTC_hour_2digits )
+//
+// Required config: email (WEDOS login), wapiPassword (WAPI password, not the
+// account password), domain (e.g. "micbox.cz").
+
+const crypto = require('crypto');
+const https = require('https');
+
+const WAPI_ENDPOINT = 'https://api.wedos.com/wapi/json';
+
+function sha1hex(str) {
+  return crypto.createHash('sha1').update(str).digest('hex');
+}
+
+function authToken(wapiPassword) {
+  const hour = new Date().getUTCHours().toString().padStart(2, '0');
+  return sha1hex(sha1hex(wapiPassword) + hour);
+}
+
+async function wapiRequest(email, wapiPassword, command, data = {}) {
+  const body = JSON.stringify({
+    request: {
+      user: email,
+      auth: authToken(wapiPassword),
+      test: 0,
+      command,
+      data,
+    },
+  });
+
+  const payload = 'request=' + encodeURIComponent(body);
+  const url = new URL(WAPI_ENDPOINT);
+
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: url.hostname,
+      path: url.pathname,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(payload),
+      },
+    }, (res) => {
+      let raw = '';
+      res.on('data', c => (raw += c));
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(raw);
+          const code = parsed?.response?.code;
+          if (code !== 1000 && code !== 1001) {
+            const msg = parsed?.response?.result || `WEDOS WAPI error code ${code}`;
+            return reject(new Error(`WEDOS WAPI [${command}]: ${msg}`));
+          }
+          resolve(parsed?.response?.data || {});
+        } catch {
+          reject(new Error(`WEDOS WAPI [${command}]: invalid response: ${raw.substring(0, 200)}`));
+        }
+      });
+    });
+    req.on('error', e => reject(new Error(`WEDOS WAPI request failed: ${e.message}`)));
+    req.setTimeout(30_000, () => {
+      req.destroy(new Error('WEDOS WAPI request timed out'));
+    });
+    req.write(payload);
+    req.end();
+  });
+}
+
+// List all DNS records for a domain.
+async function listRecords(email, wapiPassword, domain) {
+  const data = await wapiRequest(email, wapiPassword, 'dns-rows', { domain });
+  const rows = data?.row || [];
+  return Array.isArray(rows) ? rows : [rows];
+}
+
+// Commit pending zone changes. Required after any add/delete.
+async function commitZone(email, wapiPassword, domain) {
+  await wapiRequest(email, wapiPassword, 'dns-rows-commit', { name: domain });
+}
+
+// Add a single DNS record. Silently succeeds if an identical record already
+// exists (WEDOS returns code 1001 for duplicate, treated as OK above).
+async function addRecord(email, wapiPassword, domain, name, rdtype, rdata, ttl = 300) {
+  await wapiRequest(email, wapiPassword, 'dns-rows-add', {
+    domain,
+    name,
+    ttl,
+    rdtype,
+    rdata,
+  });
+}
+
+// Delete a record by its WEDOS row ID.
+async function deleteRecordById(email, wapiPassword, domain, rowId) {
+  await wapiRequest(email, wapiPassword, 'dns-row-delete-id', {
+    domain,
+    row_id: String(rowId),
+  });
+}
+
+// Create the two ACME challenge override records for <alias>.
+//
+// The greedy wildcard *.micbox.cz causes lego to follow the CNAME chain into
+// hradilrt.myDS.me / myDS.me, which WEDOS doesn't control — the DNS-01
+// challenge fails. Fix: add records that keep the challenge inside micbox.cz:
+//
+//   _acme-challenge.<alias>          CNAME  _acme-challenge-<alias>.<domain>.
+//   _acme-challenge-<alias>          TXT    placeholder
+//
+// The CNAME overrides the wildcard. The TXT overrides the one-level wildcard
+// so lego's CNAME chain terminates at a micbox.cz name (which WEDOS owns).
+async function createAcmeRecords(email, wapiPassword, domain, alias) {
+  await addRecord(
+    email, wapiPassword, domain,
+    `_acme-challenge.${alias}`,
+    'CNAME',
+    `_acme-challenge-${alias}.${domain}.`
+  );
+  await addRecord(
+    email, wapiPassword, domain,
+    `_acme-challenge-${alias}`,
+    'TXT',
+    'placeholder'
+  );
+  await commitZone(email, wapiPassword, domain);
+}
+
+// Delete the two ACME challenge override records for <alias>.
+async function deleteAcmeRecords(email, wapiPassword, domain, alias) {
+  const records = await listRecords(email, wapiPassword, domain);
+  const targets = new Set([
+    `_acme-challenge.${alias}`,
+    `_acme-challenge-${alias}`,
+  ]);
+  const toDelete = records.filter(r => targets.has(r.name));
+  if (toDelete.length === 0) return;
+  for (const r of toDelete) {
+    await deleteRecordById(email, wapiPassword, domain, r.ID);
+  }
+  await commitZone(email, wapiPassword, domain);
+}
+
+module.exports = {
+  listRecords,
+  createAcmeRecords,
+  deleteAcmeRecords,
+};
