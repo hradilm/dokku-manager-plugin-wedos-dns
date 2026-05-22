@@ -1,9 +1,11 @@
 // WEDOS DNS plugin backend.
 //
 // Fills the DNS provider slot in dokku-manager. When a domain like
-// myapp.micbox.cz is added to an app, createCNameRecord creates the two
-// ACME challenge override records in WEDOS that let dokku-letsencrypt issue
-// a cert despite the greedy *.micbox.cz wildcard CNAME.
+// myapp.micbox.cz is added to an app, createCNameRecord:
+//   1. Creates two WEDOS ACME challenge override records so lego's DNS-01
+//      challenge stays inside the micbox.cz zone (not hijacked by the wildcard).
+//   2. Configures letsencrypt for the app (dns-provider + credentials + resolver).
+//   3. Fires letsencrypt:enable in the background — cert issued without blocking.
 //
 // Required Dokku app env vars:
 //   DNS_DOMAIN              — public domain, e.g. "micbox.cz"
@@ -88,10 +90,31 @@ function register(ctx) {
     },
 
     // createCNameRecord — called when a *.domain domain is added to an app.
-    // Creates two WEDOS DNS records that override the greedy wildcard so that
-    // dokku-letsencrypt's DNS-01 challenge stays within the managed zone.
+    // Step 1 (sync): WEDOS ACME records — must exist before lego runs.
+    // Steps 2-3 (async, fire-and-forget): configure letsencrypt for the app
+    // and issue the cert. Runs in the background so the domain-addition API
+    // response returns immediately; errors are logged but don't fail the call.
     async createCNameRecord(cfg, alias) {
+      const dokku = ctx.host.dokku;
+
       await wedos.createAcmeRecords(cfg.email, cfg.wapiPassword, cfg.domain, alias);
+
+      // Shell-safe single-quote escaping for the WAPI password.
+      const escapedPassword = cfg.wapiPassword.replace(/'/g, "'\"'\"'");
+
+      (async () => {
+        try {
+          await dokku.exec(`letsencrypt:set ${alias} dns-provider wedos`);
+          await dokku.exec(`letsencrypt:set ${alias} dns-provider-WEDOS_USERNAME ${cfg.email}`);
+          await dokku.exec(`letsencrypt:set ${alias} dns-provider-WEDOS_WAPI_PASSWORD '${escapedPassword}'`);
+          await dokku.exec(`letsencrypt:set ${alias} lego-args "--dns.resolvers ns.wedos.net:53"`);
+          await dokku.exec(`letsencrypt:enable ${alias}`);
+          dokku.log('RECV', `[wedos-dns] letsencrypt:enable ${alias}: cert issued`);
+        } catch (err) {
+          dokku.log('ERR', `[wedos-dns] letsencrypt:enable ${alias} failed: ${err.message}`);
+        }
+      })();
+
       return {
         success: true,
         alias,
@@ -101,7 +124,19 @@ function register(ctx) {
     },
 
     async deleteCNameRecord(cfg, alias) {
+      const dokku = ctx.host.dokku;
+
       await wedos.deleteAcmeRecords(cfg.email, cfg.wapiPassword, cfg.domain, alias);
+
+      (async () => {
+        try {
+          await dokku.exec(`letsencrypt:disable ${alias}`);
+          dokku.log('RECV', `[wedos-dns] letsencrypt:disable ${alias}: cert removed`);
+        } catch (err) {
+          dokku.log('ERR', `[wedos-dns] letsencrypt:disable ${alias} failed: ${err.message}`);
+        }
+      })();
+
       return { success: true, alias };
     },
 
