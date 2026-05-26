@@ -1,7 +1,8 @@
 // WEDOS WAPI client.
 //
 // Talks to https://api.wedos.com/wapi/json using form-encoded POST.
-// Auth token: sha1( sha1(password).hex + UTC_hour_2digits )
+// Auth token: sha1( sha1(password).hex + Prague_hour_2digits )
+// WEDOS uses Prague local time (Europe/Prague), not UTC.
 //
 // Required config: email (WEDOS login), wapiPassword (WAPI password, not the
 // account password), domain (e.g. "micbox.cz").
@@ -16,7 +17,7 @@ function sha1hex(str) {
 }
 
 function authToken(wapiPassword) {
-  const hour = new Date().getUTCHours().toString().padStart(2, '0');
+  const hour = new Date().toLocaleString('cs-CZ', { timeZone: 'Europe/Prague', hour: '2-digit', hour12: false }).padStart(2, '0');
   return sha1hex(sha1hex(wapiPassword) + hour);
 }
 
