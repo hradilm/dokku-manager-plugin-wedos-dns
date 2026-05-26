@@ -102,19 +102,34 @@ function register(ctx) {
 
       await wedos.createAppRecords(cfg.email, cfg.wapiPassword, cfg.domain, alias, cfg.cnameTarget);
 
-      // Shell-safe single-quote escaping for the WAPI password.
-      const escapedPassword = cfg.wapiPassword.replace(/'/g, "'\"'\"'");
-
       (async () => {
+        let removedDomains = [];
         try {
           await dokku.exec(`letsencrypt:set ${alias} dns-provider wedos`);
           await dokku.exec(`letsencrypt:set ${alias} dns-provider-WEDOS_USERNAME ${cfg.email}`);
-          await dokku.exec(`letsencrypt:set ${alias} dns-provider-WEDOS_WAPI_PASSWORD '${escapedPassword}'`);
-          await dokku.exec(`letsencrypt:set ${alias} lego-args "--dns.resolvers ns.wedos.net:53"`);
+          // Single-quote the password so spaces/specials survive bash parsing in the
+          // Dokku SSH forced command. Use ''"'"' for any literal ' inside the value.
+          const quotedPassword = "'" + cfg.wapiPassword.replace(/'/g, "'\"'\"'") + "'";
+          await dokku.exec(`letsencrypt:set ${alias} dns-provider-WEDOS_WAPI_PASSWORD ${quotedPassword}`);
+          await dokku.exec(`letsencrypt:set ${alias} lego-args --dns.resolvers=ns.wedos.net:53`);
+
+          // letsencrypt:enable includes ALL app domains in the SAN. Domains with
+          // non-public TLDs (e.g. .nas) cause Let's Encrypt to reject the order.
+          // Temporarily remove them, issue the cert, then restore.
+          const allDomains = await dokku.getDomains(alias);
+          removedDomains = allDomains.filter(d => !d.endsWith(`.${cfg.domain}`));
+          for (const d of removedDomains) {
+            await dokku.removeDomain(alias, d);
+          }
+
           await dokku.exec(`letsencrypt:enable ${alias}`);
           dokku.log('RECV', `[wedos-dns] letsencrypt:enable ${alias}: cert issued`);
         } catch (err) {
           dokku.log('ERR', `[wedos-dns] letsencrypt:enable ${alias} failed: ${err.message}`);
+        } finally {
+          for (const d of removedDomains) {
+            await dokku.addDomain(alias, d).catch(() => {});
+          }
         }
       })();
 
