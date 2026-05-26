@@ -114,8 +114,9 @@ function WedosDnsTab({ managerAppName }) {
         {editing ? (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Domain</label>
+              <label htmlFor="wedos-domain" className="block text-sm font-medium text-gray-700 mb-1">Domain</label>
               <input
+                id="wedos-domain"
                 type="text"
                 value={form.domain}
                 onChange={(e) => setForm(p => ({ ...p, domain: e.target.value }))}
@@ -127,8 +128,9 @@ function WedosDnsTab({ managerAppName }) {
               </p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">WEDOS Account Email</label>
+              <label htmlFor="wedos-email" className="block text-sm font-medium text-gray-700 mb-1">WEDOS Account Email</label>
               <input
+                id="wedos-email"
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm(p => ({ ...p, email: e.target.value }))}
@@ -137,8 +139,9 @@ function WedosDnsTab({ managerAppName }) {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">CNAME Target</label>
+              <label htmlFor="wedos-cname-target" className="block text-sm font-medium text-gray-700 mb-1">CNAME Target</label>
               <input
+                id="wedos-cname-target"
                 type="text"
                 value={form.cnameTarget}
                 onChange={(e) => setForm(p => ({ ...p, cnameTarget: e.target.value }))}
@@ -150,8 +153,9 @@ function WedosDnsTab({ managerAppName }) {
               </p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">WEDOS WAPI Password</label>
+              <label htmlFor="wedos-wapi-password" className="block text-sm font-medium text-gray-700 mb-1">WEDOS WAPI Password</label>
               <input
+                id="wedos-wapi-password"
                 type="password"
                 value={form.wapiPassword}
                 onChange={(e) => setForm(p => ({ ...p, wapiPassword: e.target.value }))}
