@@ -1,7 +1,7 @@
 // WEDOS WAPI client.
 //
 // Talks to https://api.wedos.com/wapi/json using form-encoded POST.
-// Auth token: sha1( sha1(password).hex + Prague_hour_2digits )
+// Auth token: sha1( email + sha1(password).hex + Prague_hour_2digits )
 // WEDOS uses Prague local time (Europe/Prague), not UTC.
 //
 // Required config: email (WEDOS login), wapiPassword (WAPI password, not the
@@ -16,16 +16,16 @@ function sha1hex(str) {
   return crypto.createHash('sha1').update(str).digest('hex');
 }
 
-function authToken(wapiPassword) {
+function authToken(email, wapiPassword) {
   const hour = new Date().toLocaleString('cs-CZ', { timeZone: 'Europe/Prague', hour: '2-digit', hour12: false }).padStart(2, '0');
-  return sha1hex(sha1hex(wapiPassword) + hour);
+  return sha1hex(email + sha1hex(wapiPassword) + hour);
 }
 
 async function wapiRequest(email, wapiPassword, command, data = {}) {
   const body = JSON.stringify({
     request: {
       user: email,
-      auth: authToken(wapiPassword),
+      auth: authToken(email, wapiPassword),
       test: 0,
       command,
       data,
@@ -72,20 +72,20 @@ async function wapiRequest(email, wapiPassword, command, data = {}) {
 
 // List all DNS records for a domain.
 async function listRecords(email, wapiPassword, domain) {
-  const data = await wapiRequest(email, wapiPassword, 'dns-rows', { domain });
+  const data = await wapiRequest(email, wapiPassword, 'dns-rows-list', { domain });
   const rows = data?.row || [];
   return Array.isArray(rows) ? rows : [rows];
 }
 
 // Commit pending zone changes. Required after any add/delete.
 async function commitZone(email, wapiPassword, domain) {
-  await wapiRequest(email, wapiPassword, 'dns-rows-commit', { name: domain });
+  await wapiRequest(email, wapiPassword, 'dns-domain-commit', { name: domain });
 }
 
 // Add a single DNS record. Silently succeeds if an identical record already
 // exists (WEDOS returns code 1001 for duplicate, treated as OK above).
 async function addRecord(email, wapiPassword, domain, name, rdtype, rdata, ttl = 300) {
-  await wapiRequest(email, wapiPassword, 'dns-rows-add', {
+  await wapiRequest(email, wapiPassword, 'dns-row-add', {
     domain,
     name,
     ttl,
@@ -96,7 +96,7 @@ async function addRecord(email, wapiPassword, domain, name, rdtype, rdata, ttl =
 
 // Delete a record by its WEDOS row ID.
 async function deleteRecordById(email, wapiPassword, domain, rowId) {
-  await wapiRequest(email, wapiPassword, 'dns-row-delete-id', {
+  await wapiRequest(email, wapiPassword, 'dns-row-delete', {
     domain,
     row_id: String(rowId),
   });
