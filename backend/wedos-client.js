@@ -89,7 +89,7 @@ async function addRecord(email, wapiPassword, domain, name, rdtype, rdata, ttl =
     domain,
     name,
     ttl,
-    rdtype,
+    type: rdtype,
     rdata,
   });
 }
@@ -106,8 +106,8 @@ async function deleteRecordById(email, wapiPassword, domain, rowId) {
 // WEDOS authoritative nameservers do not expand wildcard CNAMEs for individual
 // subdomain queries, so an explicit per-app record is required.
 async function createAppRecords(email, wapiPassword, domain, alias, cnameTarget) {
-  // Normalise: CNAME rdata must end with a dot for absolute hostnames.
-  const target = cnameTarget.endsWith('.') ? cnameTarget : `${cnameTarget}.`;
+  // WEDOS stores CNAME rdata without trailing dot.
+  const target = cnameTarget.replace(/\.$/, '');
   await addRecord(email, wapiPassword, domain, alias, 'CNAME', target, 1800);
   await commitZone(email, wapiPassword, domain);
 }
